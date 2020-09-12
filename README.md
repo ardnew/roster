@@ -4,7 +4,7 @@
 [repurl]:https://goreportcard.com/report/github.com/ardnew/roster
 
 # roster
-#### Check which files have changed using a directory index
+#### Check which files have changed using configurable directory index file
 
 [![GoDoc][docimg]][docurl] [![Go Report Card][repimg]][repurl]
 
