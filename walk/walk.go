@@ -63,22 +63,20 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 	for i := 0; i < threads; i++ {
 		go func(w *sync.WaitGroup, q chan Info, r *file.Roster, n, m chan string) {
 			for in := range q {
-				// check if this file is ignored
-				if r.Keep(in.path, in.info) {
-					// determine if the file is new or changed
-					if new, mod, stat, err := r.Changed(in.path, in.info); nil != err {
-						fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
-					} else {
-						// update the index if new or changed
-						if new || mod {
-							if err := r.Update(in.path, stat); nil != err {
-								fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
+
+				// determine if the file is new or changed
+				if new, mod, stat, err := r.Changed(in.path, in.info); nil != err {
+					fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
+				} else {
+					// update the index if new or changed
+					if new || mod {
+						if err := r.Update(in.path, stat); nil != err {
+							fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
+						} else {
+							if new {
+								n <- in.path
 							} else {
-								if new {
-									n <- in.path
-								} else {
-									m <- in.path
-								}
+								m <- in.path
 							}
 						}
 					}
@@ -93,8 +91,11 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 			if err != nil {
 				return err
 			}
-			work.Add(1)
-			queue <- Info{path, info}
+			// check if this file is ignored
+			if roster.Keep(path, info) {
+				work.Add(1)
+				queue <- Info{path, info}
+			}
 			return nil
 		})
 

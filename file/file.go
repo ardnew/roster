@@ -267,6 +267,7 @@ func (ros *Roster) Status(filePath string) (Status, bool) {
 // candidate for indexing. Directories, files matching an ignore pattern, and
 // the roster index file itself all return false.
 func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
+
 	if uint32(info.Mode()&os.ModeType) != 0 {
 		return false
 	}
@@ -275,7 +276,7 @@ func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
 	}
 	for _, ign := range ros.Cfg.Ign {
 		match, err := filepath.Match(ign, filePath)
-		if (nil != err) && match {
+		if (nil == err) && match {
 			return false
 		}
 	}

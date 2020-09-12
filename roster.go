@@ -40,6 +40,10 @@ func main() {
 	flag.BoolVar(&updateRoster, "u", updateRosterDefault, "update roster with scan results")
 	flag.Parse()
 
+	if len(flag.Args()) == 0 {
+		fmt.Printf("error: no directory path(s) provided\n")
+	}
+
 	for _, dir := range flag.Args() {
 		path := filepath.Join(dir, rosterFileName)
 		ros, err := file.Parse(path)
