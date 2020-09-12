@@ -1,5 +1,12 @@
+[docimg]:https://godoc.org/github.com/ardnew/roster?status.svg
+[docurl]:https://godoc.org/github.com/ardnew/roster
+[repimg]:https://goreportcard.com/badge/github.com/ardnew/roster
+[repurl]:https://goreportcard.com/report/github.com/ardnew/roster
+
 # roster
 #### Check which files have changed using a directory index
+
+[![GoDoc][docimg]][docurl] [![Go Report Card][repimg]][repurl]
 
 ## Synopsis
 
