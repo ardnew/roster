@@ -6,12 +6,15 @@ package file
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/cespare/xxhash"
 	"gopkg.in/yaml.v3"
@@ -55,6 +58,7 @@ type Config struct {
 	Rt  Runtime `yaml:"runtime"` // various runtime settings
 	Ver Verify  `yaml:"verify"`  // attributes used to identify changed files
 	Ign Ignore  `yaml:"ignore"`  // file patterns to exclude from roster index
+	ire IgnoreRegexp
 }
 
 // Constants representing special-purpose values for Runtime fields.
@@ -80,6 +84,41 @@ type Verify struct {
 
 // Ignore stores a list of file patterns to exclude from the roster index.
 type Ignore []string
+
+// IgnoreRegexp stores a list of compiled regular expressions created from a
+// slice of strings of type Ignore.
+type IgnoreRegexp []*regexp.Regexp
+
+// Compile builds a list of regular expressions from a string slice of ignore
+// patterns.
+func (i Ignore) Compile() (*IgnoreRegexp, error) {
+	ignre := IgnoreRegexp{}
+	for _, ign := range i {
+		// test if provided a string literal (surrounded with backticks)
+		if utf8.RuneCountInString(ign) >= 2 {
+			s, sl := utf8.DecodeRuneInString(ign)
+			e, el := utf8.DecodeLastRuneInString(ign)
+			if s == '`' && e == '`' {
+				b := []byte(ign)[sl : len(ign)-el]
+				if !utf8.Valid(b) {
+					return nil, fmt.Errorf("invalid ignore pattern: %s", ign)
+				}
+				re, err := regexp.Compile(regexp.QuoteMeta(string(b)))
+				if nil != err {
+					return nil, err
+				}
+				ignre = append(ignre, re)
+				continue
+			}
+		}
+		re, err := regexp.Compile(ign)
+		if nil != err {
+			return nil, err
+		}
+		ignre = append(ignre, re)
+	}
+	return &ignre, nil
+}
 
 // Members stores the index of all roster members as a mapping from file path to
 // Status struct containing file attributes.
@@ -199,6 +238,7 @@ func New(filePath string) *Roster {
 				Check: true,
 			},
 			Ign: Ignore{},
+			ire: IgnoreRegexp{},
 		},
 		Mem: Member{},
 	}
@@ -237,6 +277,12 @@ func Parse(filePath string) (*Roster, error) {
 		return nil, err
 	}
 
+	ire, err := ros.Cfg.Ign.Compile()
+	if nil != err {
+		return nil, err
+	}
+	ros.Cfg.ire = *ire
+
 	return ros, nil
 }
 
@@ -274,9 +320,8 @@ func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
 	if filepath.Clean(filePath) == filepath.Clean(ros.path) {
 		return false
 	}
-	for _, ign := range ros.Cfg.Ign {
-		match, err := filepath.Match(ign, filePath)
-		if (nil == err) && match {
+	for _, ire := range ros.Cfg.ire {
+		if ire.MatchString(filePath) {
 			return false
 		}
 	}
