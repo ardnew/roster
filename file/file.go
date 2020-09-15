@@ -155,7 +155,7 @@ func NoStatus() Status {
 }
 
 // MakeStatus constructs a new Status struct, per Verify settings.
-func MakeStatus(filePath string, info os.FileInfo, ver Verify) (Status, error) {
+func MakeStatus(root string, relPath string, info os.FileInfo, ver Verify) (Status, error) {
 	var stat Status
 
 	if ver.Fsize {
@@ -179,7 +179,7 @@ func MakeStatus(filePath string, info os.FileInfo, ver Verify) (Status, error) {
 	if ver.Check {
 		// compute checksum
 		var err error
-		if stat.Check, err = Checksum(filePath); nil != err {
+		if stat.Check, err = Checksum(filepath.Join(root, relPath)); nil != err {
 			return NoStatus(), err
 		}
 	} else {
@@ -325,7 +325,7 @@ func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
 	if uint32(info.Mode()&os.ModeType) != 0 {
 		return false
 	}
-	if filepath.Clean(filePath) == filepath.Clean(ros.path) {
+	if filepath.Base(filePath) == filepath.Base(ros.path) {
 		return false
 	}
 	for _, ire := range ros.Cfg.ire {
@@ -340,9 +340,9 @@ func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
 // the roster index, computes the Status struct for the given file, and returns
 // whether it is a new file, whether the Status info has changed, and what the
 // new Status is, along with any error encountered.
-func (ros *Roster) Changed(filePath string, info os.FileInfo) (new bool, changed bool, stat Status, err error) {
-	prev, ok := ros.Status(filePath)
-	stat, err = MakeStatus(filePath, info, ros.Cfg.Ver)
+func (ros *Roster) Changed(root string, relPath string, info os.FileInfo) (new bool, changed bool, stat Status, err error) {
+	prev, ok := ros.Status(relPath)
+	stat, err = MakeStatus(root, relPath, info, ros.Cfg.Ver)
 	if ok && prev.Valid(ros.Cfg.Ver) {
 		return false, !prev.Equals(stat, ros.Cfg.Ver), stat, err
 	} else {

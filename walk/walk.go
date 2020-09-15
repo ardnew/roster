@@ -8,10 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/ardnew/roster/file"
 )
+
+// Info stores a unique description of a complete file path (relative) along
+// with its os.FileInfo obtained from filepath.Walk.
 
 // Info stores a unique description of a complete file path (relative) along
 // with its os.FileInfo obtained from filepath.Walk.
@@ -61,11 +65,11 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 
 	// spawn worker goroutines to process multiple files simultaneously
 	for i := 0; i < threads; i++ {
-		go func(w *sync.WaitGroup, q chan Info, r *file.Roster, n, m chan string) {
+		go func(w *sync.WaitGroup, d string, q chan Info, r *file.Roster, n, m chan string) {
 			for in := range q {
 
 				// determine if the file is new or changed
-				if new, mod, stat, err := r.Changed(in.path, in.info); nil != err {
+				if new, mod, stat, err := r.Changed(d, in.path, in.info); nil != err {
 					fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
 				} else {
 					// update the index if new or changed
@@ -83,7 +87,7 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 				}
 				w.Done()
 			}
-		}(&work, queue, roster, funnelNew, funnelMod)
+		}(&work, filePath, queue, roster, funnelNew, funnelMod)
 	}
 
 	filepath.Walk(filePath,
@@ -91,10 +95,11 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 			if err != nil {
 				return err
 			}
+			relPath := strings.TrimPrefix(path, filepath.Clean(filePath)+string(os.PathSeparator))
 			// check if this file is ignored
-			if roster.Keep(path, info) {
+			if roster.Keep(relPath, info) {
 				work.Add(1)
-				queue <- Info{path, info}
+				queue <- Info{relPath, info}
 			}
 			return nil
 		})
