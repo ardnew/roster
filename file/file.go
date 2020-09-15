@@ -53,6 +53,8 @@ type Roster struct {
 	Mem  Member `yaml:"members"` // index of all files
 }
 
+var IgnoreDefault = []string{"\\.git", "\\.svn"}
+
 // Config contains settings for constructing and verifying the roster index.
 type Config struct {
 	Rt  Runtime `yaml:"runtime"` // various runtime settings
@@ -222,7 +224,11 @@ func Checksum(filePath string) (sum string, err error) {
 // default data.
 // The returned file is stored in-memory only. The Write method must be called
 // to write the file to disk.
-func New(filePath string) *Roster {
+func New(fileExists bool, filePath string) *Roster {
+	ign := Ignore{}
+	if !fileExists {
+		ign = IgnoreDefault
+	}
 	return &Roster{
 		path: filePath,
 		mux:  sync.Mutex{},
@@ -237,7 +243,7 @@ func New(filePath string) *Roster {
 				Mtime: true,
 				Check: true,
 			},
-			Ign: Ignore{},
+			Ign: ign,
 			ire: IgnoreRegexp{},
 		},
 		Mem: Member{},
@@ -261,7 +267,7 @@ func Parse(filePath string) (*Roster, error) {
 	fstat, ferr := os.Stat(filePath)
 	if os.IsNotExist(ferr) {
 		// create a new default roster file if one does not exist
-		return New(filePath), nil
+		return New(false, filePath), nil
 	} else if uint32(fstat.Mode()&os.ModeType) != 0 {
 		return nil, NotRegularFileError(filePath)
 	}
@@ -271,7 +277,7 @@ func Parse(filePath string) (*Roster, error) {
 		return nil, err
 	}
 
-	ros := New(filePath)
+	ros := New(true, filePath)
 	err = yaml.Unmarshal(data, ros)
 	if err != nil {
 		return nil, err

@@ -5,7 +5,7 @@
 
 `roster` uses a combined index and configuration file in YAML format (the "roster index") to record the file size, last modification time, permissions, and checksum (using the very-fast xxHash algorithm) of files in a given directory tree. 
 
-The roster index contains configuration parameters that control which, if any, of the attributes mentioned above are used when determining if files have changed since they were last recorded. It can also define ignore patterns to exclude files and directories from the index, as well as number of threads (goroutines) to spawn concurrently for analyzing file attributes (by default, it uses the number of CPU cores available).
+The roster index contains configuration parameters that control which, if any, of the attributes mentioned above are used when determining if files have changed since they were last recorded. It can also define ignore patterns (regular expressions) to exclude files and directories from the index, as well as number of threads (goroutines) to spawn concurrently for analyzing file attributes (by default, it uses the number of CPU cores available).
 
 The program will first output the list of newly discovered files that do not exist in the index, one per line, with each line prefixed by the string `+ `.
 
@@ -36,11 +36,8 @@ config:
         lastmodtime: true
         checksum: true
     ignore:
-        - '*.git/*'
-        - '*.git/*/*'
-        - '*.git/*/*/*'
-        - '*.git/*/*/*/*'
-        - '*.git/*/*/*/*/*'
+        - '\.git'
+        - '\.svn'
 members:
     LICENSE:
         size: 1063
@@ -68,6 +65,4 @@ members:
         last: 1599868623
         hash: 817ca7048fd84371
 ```
-
-Note the awkward ignore patterns for git are because of the Go filepath globbing requirements, as the pattern has to match the entire path, not just a substring. This could obviously be improved.
 
