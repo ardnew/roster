@@ -53,7 +53,7 @@ type Roster struct {
 	Mem  Member `yaml:"members"` // index of all files
 }
 
-var IgnoreDefault = []string{"\\.git", "\\.svn"}
+var IgnoreDefault = Ignore{"\\.git", "\\.svn"}
 
 // Config contains settings for constructing and verifying the roster index.
 type Config struct {
@@ -225,9 +225,11 @@ func Checksum(filePath string) (sum string, err error) {
 // The returned file is stored in-memory only. The Write method must be called
 // to write the file to disk.
 func New(fileExists bool, filePath string) *Roster {
-	ign := Ignore{}
+	ign := &Ignore{}
+	ire := &IgnoreRegexp{}
 	if !fileExists {
-		ign = IgnoreDefault
+		ign = &IgnoreDefault
+		ire, _ = ign.Compile()
 	}
 	return &Roster{
 		path: filePath,
@@ -243,8 +245,8 @@ func New(fileExists bool, filePath string) *Roster {
 				Mtime: true,
 				Check: true,
 			},
-			Ign: ign,
-			ire: IgnoreRegexp{},
+			Ign: *ign,
+			ire: *ire,
 		},
 		Mem: Member{},
 	}
