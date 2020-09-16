@@ -374,12 +374,21 @@ func (ros *Roster) Update(filePath string, stat Status) error {
 	if !stat.Valid() {
 		return errors.New("invalid member status")
 	}
+
 	ros.memlk.Lock()
 	ros.Mem[filePath] = stat
 	ros.memlk.Unlock()
+
+	ros.abslk.Lock()
+	if _, ok := ros.abs[filePath]; ok {
+		delete(ros.abs, filePath)
+	}
+	ros.abslk.Unlock()
+
 	return nil
 }
 
+// Expel removes the given file path from the receiver Roster ros.
 func (ros *Roster) Expel(filePath string) {
 	ros.memlk.Lock()
 	defer ros.memlk.Unlock()
@@ -388,16 +397,8 @@ func (ros *Roster) Expel(filePath string) {
 	}
 }
 
-func (ros *Roster) Present(filePath string) error {
-	ros.abslk.Lock()
-	defer ros.abslk.Unlock()
-	if _, ok := ros.abs[filePath]; !ok {
-		return fmt.Errorf("file already seen: %q", filePath)
-	}
-	delete(ros.abs, filePath)
-	return nil
-}
-
+// Absentees returns a list of files that remain in the receiver Roster ros's
+// list of missing files.
 func (ros *Roster) Absentees() []string {
 	abs := make([]string, len(ros.abs))
 	i := 0

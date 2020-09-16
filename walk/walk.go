@@ -70,18 +70,9 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string, del
 					fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
 				} else {
 					// update the roster index (in-memory) with current file attributes
-					var err error
-					if !new {
-						if err = r.Present(in.path); nil != err {
-							fmt.Printf("error: Present(): %s\n", err.Error())
-						}
-					}
-					if nil == err {
-						if err = r.Update(in.path, stat); nil != err {
-							fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
-						}
-					}
-					if nil == err {
+					if err := r.Update(in.path, stat); nil != err {
+						fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
+					} else {
 						if new {
 							n <- in.path
 						} else if mod {
