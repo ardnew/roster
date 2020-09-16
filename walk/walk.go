@@ -27,7 +27,7 @@ type Info struct {
 // Walk traverses a directory tree recursively, constructing a roster index file
 // along the way, and returns a list of all new files discovered and a list of
 // all existing files that have changed since they were last recorded.
-func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
+func Walk(filePath string, roster *file.Roster) (new []string, mod []string, del []string) {
 
 	new = []string{}
 	mod = []string{}
@@ -67,12 +67,16 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 	for i := 0; i < threads; i++ {
 		go func(w *sync.WaitGroup, d string, q chan Info, r *file.Roster, n, m chan string) {
 			for in := range q {
-
 				// determine if the file is new or changed
 				if new, mod, stat, err := r.Changed(d, in.path, in.info); nil != err {
 					fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
 				} else {
 					// update the index if new or changed
+					if !new {
+						if err := r.Present(in.path); nil != err {
+							fmt.Printf("error: Present(): %s\n", err.Error())
+						}
+					}
 					if new || mod {
 						if err := r.Update(in.path, stat); nil != err {
 							fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
@@ -117,5 +121,5 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string) {
 	waitNew.Wait()
 	waitMod.Wait()
 
-	return new, mod
+	return new, mod, roster.Absentees()
 }

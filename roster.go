@@ -29,30 +29,37 @@ type Handler func(string)
 type Taker struct {
 	NewFile Handler
 	ModFile Handler
+	DelFile Handler
 }
 
 var (
 	DefaultTaker = Taker{
 		NewFile: func(filePath string) { fmt.Println("+ " + filePath) },
 		ModFile: func(filePath string) { fmt.Println(filePath) },
+		DelFile: func(filePath string) { fmt.Println("- " + filePath) },
+	}
+	SkipTaker = Taker{
+		NewFile: Skip,
+		ModFile: Skip,
+		DelFile: Skip,
 	}
 	Skip = Handler(nil)
 )
 
-func Take(take Taker, filePath string, update bool, path ...string) error {
+func Take(take Taker, filename string, update bool, path ...string) error {
 
 	if len(path) == 0 {
 		return errors.New("no directory path(s) provided")
 	}
 
 	for _, dir := range path {
-		path := filepath.Join(dir, filePath)
+		path := filepath.Join(dir, filename)
 		ros, err := file.Parse(path)
 		if nil != err {
 			return fmt.Errorf("file.Parse(): %s\n", err.Error())
 		}
 
-		new, mod := walk.Walk(dir, ros)
+		new, mod, del := walk.Walk(dir, ros)
 
 		sort.Strings(new)
 		if take.NewFile != nil {
@@ -65,6 +72,13 @@ func Take(take Taker, filePath string, update bool, path ...string) error {
 		if take.ModFile != nil {
 			for _, s := range mod {
 				take.ModFile(s)
+			}
+		}
+
+		sort.Strings(del)
+		if take.DelFile != nil {
+			for _, s := range del {
+				take.DelFile(s)
 			}
 		}
 

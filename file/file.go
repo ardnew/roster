@@ -47,10 +47,12 @@ var Permissions os.FileMode = 0600
 // Roster represents a roster file, containing the index of all member files in
 // a directory tree.
 type Roster struct {
-	path string
-	mux  sync.Mutex
-	Cfg  Config `yaml:"config"`  // roster configuration
-	Mem  Member `yaml:"members"` // index of all files
+	path  string
+	memlk sync.Mutex
+	abslk sync.Mutex
+	Cfg   Config `yaml:"config"`  // roster configuration
+	Mem   Member `yaml:"members"` // index of all files
+	abs   Absent
 }
 
 var IgnoreDefault = Ignore{"\\.git", "\\.svn"}
@@ -122,9 +124,13 @@ func (i Ignore) Compile() (*IgnoreRegexp, error) {
 	return &ignre, nil
 }
 
-// Members stores the index of all roster members as a mapping from file path to
+// Member stores the index of all roster members as a mapping from file path to
 // Status struct containing file attributes.
 type Member map[string]Status
+
+// Absent stores a record of all files in the roster, which are removed once the
+// file is discovered.
+type Absent map[string]bool
 
 // Constants defining Status field values with special meaning.
 const (
@@ -232,8 +238,9 @@ func New(fileExists bool, filePath string) *Roster {
 		ire, _ = ign.Compile()
 	}
 	return &Roster{
-		path: filePath,
-		mux:  sync.Mutex{},
+		path:  filePath,
+		memlk: sync.Mutex{},
+		abslk: sync.Mutex{},
 		Cfg: Config{
 			Rt: Runtime{
 				Thr: RuntimeThreadsNoLimit,
@@ -249,6 +256,7 @@ func New(fileExists bool, filePath string) *Roster {
 			ire: *ire,
 		},
 		Mem: Member{},
+		abs: Absent{},
 	}
 }
 
@@ -285,6 +293,11 @@ func Parse(filePath string) (*Roster, error) {
 		return nil, err
 	}
 
+	// initialize absentee list
+	for mem := range ros.Mem {
+		ros.abs[mem] = true
+	}
+
 	ire, err := ros.Cfg.Ign.Compile()
 	if nil != err {
 		return nil, err
@@ -308,8 +321,8 @@ func (ros *Roster) Write() error {
 // corresponding Status struct and true. If the file path does not exist, it
 // returns the unique NoStatus struct and false.
 func (ros *Roster) Status(filePath string) (Status, bool) {
-	ros.mux.Lock()
-	defer ros.mux.Unlock()
+	ros.memlk.Lock()
+	defer ros.memlk.Unlock()
 	if stat, ok := ros.Mem[filePath]; ok {
 		return stat, true
 	} else {
@@ -356,8 +369,28 @@ func (ros *Roster) Update(filePath string, stat Status) error {
 	if !stat.Valid(ros.Cfg.Ver) {
 		return errors.New("invalid member status")
 	}
-	ros.mux.Lock()
+	ros.memlk.Lock()
 	ros.Mem[filePath] = stat
-	ros.mux.Unlock()
+	ros.memlk.Unlock()
 	return nil
+}
+
+func (ros *Roster) Present(filePath string) error {
+	ros.abslk.Lock()
+	defer ros.abslk.Unlock()
+	if _, ok := ros.abs[filePath]; !ok {
+		return fmt.Errorf("file already seen: %q", filePath)
+	}
+	delete(ros.abs, filePath)
+	return nil
+}
+
+func (ros *Roster) Absentees() []string {
+	abs := make([]string, len(ros.abs))
+	i := 0
+	for s := range ros.abs {
+		abs[i] = s
+		i++
+	}
+	return abs
 }
