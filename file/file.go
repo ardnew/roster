@@ -55,6 +55,8 @@ type Roster struct {
 	abs   Absent
 }
 
+// IgnoreDefault defines the default Ignore patterns used when creating a new
+// roster file. The default items are VCS metadata directories.
 var IgnoreDefault = Ignore{"\\.git", "\\.svn"}
 
 // Config contains settings for constructing and verifying the roster index.
@@ -75,6 +77,12 @@ const (
 type Runtime struct {
 	Thr int `yaml:"threads"`
 	Dep int `yaml:"maxdepth"`
+}
+
+// AllVerify returns a Verify struct with all attributes set true for
+// verification.
+func AllVerify() Verify {
+	return Verify{Fsize: true, Perms: true, Mtime: true, Check: true}
 }
 
 // Verify defines file attributes that are recorded for all indexed files and
@@ -136,16 +144,16 @@ type Absent map[string]bool
 const (
 	StatusNoFsize   int64  = -1
 	StatusPermsMask uint64 = 0x00000000FFFFFFFF
-	StatusNoPerms   uint64 = ^StatusPermsMask
-	StatusNoMtime   int64  = -1
+	StatusNoPerms   string = "(none)"
+	StatusNoMtime   string = "(none)"
 	StatusNoCheck   string = ""
 )
 
 // Status represents all verifiable attributes of an indexed file.
 type Status struct {
 	Fsize int64  `yaml:"size"`
-	Perms uint64 `yaml:"perm"`
-	Mtime int64  `yaml:"last"`
+	Perms string `yaml:"perm"`
+	Mtime string `yaml:"last"`
 	Check string `yaml:"hash"`
 }
 
@@ -160,43 +168,28 @@ func NoStatus() Status {
 	}
 }
 
-// MakeStatus constructs a new Status struct, per Verify settings.
-func MakeStatus(root string, relPath string, info os.FileInfo, ver Verify) (Status, error) {
+// MakeStatus constructs a new Status struct. This method does not consider the
+// Verify settings, and it will always analyze all attributes of the given file.
+func MakeStatus(root string, relPath string, info os.FileInfo) (Status, error) {
 	var stat Status
 
-	if ver.Fsize {
-		stat.Fsize = info.Size()
-	} else {
-		stat.Fsize = StatusNoFsize
-	}
+	stat.Fsize = info.Size()
+	stat.Perms = info.Mode().String()
+	stat.Mtime = info.ModTime().Local().String()
 
-	if ver.Perms {
-		stat.Perms = uint64(info.Mode()) & StatusPermsMask
-	} else {
-		stat.Perms = StatusNoPerms
-	}
-
-	if ver.Mtime {
-		stat.Mtime = info.ModTime().Unix()
-	} else {
-		stat.Mtime = StatusNoMtime
-	}
-
-	if ver.Check {
-		// compute checksum
-		var err error
-		if stat.Check, err = Checksum(filepath.Join(root, relPath)); nil != err {
-			return NoStatus(), err
-		}
-	} else {
-		stat.Check = StatusNoCheck
+	// compute checksum
+	var err error
+	if stat.Check, err = Checksum(filepath.Join(root, relPath)); nil != err {
+		return NoStatus(), err
 	}
 
 	return stat, nil
 }
 
-func (s Status) Valid(ver Verify) bool {
-	return !s.Equals(NoStatus(), ver)
+// Valid verifies the receiver Status s is not equal to the unique NoStatus
+// struct, using all Status attributes.
+func (s Status) Valid() bool {
+	return !s.Equals(NoStatus(), AllVerify())
 }
 
 // Equals compares two Status structs for equality, per Verify settings.
@@ -293,16 +286,27 @@ func Parse(filePath string) (*Roster, error) {
 		return nil, err
 	}
 
-	// initialize absentee list
-	for mem := range ros.Mem {
-		ros.abs[mem] = true
-	}
-
 	ire, err := ros.Cfg.Ign.Compile()
 	if nil != err {
 		return nil, err
 	}
 	ros.Cfg.ire = *ire
+
+	// initialize absentee list
+	for mem := range ros.Mem {
+		inc := true
+		// if files previously added to roster are now on the ignore list, skip
+		// adding them to the absentee list
+		for _, ire := range ros.Cfg.ire {
+			if ire.MatchString(mem) {
+				inc = false
+				break
+			}
+		}
+		if inc {
+			ros.abs[mem] = true
+		}
+	}
 
 	return ros, nil
 }
@@ -334,7 +338,6 @@ func (ros *Roster) Status(filePath string) (Status, bool) {
 // candidate for indexing. Directories, files matching an ignore pattern, and
 // the roster index file itself all return false.
 func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
-
 	if uint32(info.Mode()&os.ModeType) != 0 {
 		return false
 	}
@@ -353,10 +356,12 @@ func (ros *Roster) Keep(filePath string, info os.FileInfo) bool {
 // the roster index, computes the Status struct for the given file, and returns
 // whether it is a new file, whether the Status info has changed, and what the
 // new Status is, along with any error encountered.
-func (ros *Roster) Changed(root string, relPath string, info os.FileInfo) (new bool, changed bool, stat Status, err error) {
+func (ros *Roster) Changed(root string, relPath string, info os.FileInfo) (
+	new bool, changed bool, stat Status, err error,
+) {
 	prev, ok := ros.Status(relPath)
-	stat, err = MakeStatus(root, relPath, info, ros.Cfg.Ver)
-	if ok && prev.Valid(ros.Cfg.Ver) {
+	stat, err = MakeStatus(root, relPath, info)
+	if ok && prev.Valid() {
 		return false, !prev.Equals(stat, ros.Cfg.Ver), stat, err
 	} else {
 		return true, false, stat, err
@@ -366,13 +371,21 @@ func (ros *Roster) Changed(root string, relPath string, info os.FileInfo) (new b
 // Update replaces the Status struct associated with a given file path in the
 // roster index if valid.
 func (ros *Roster) Update(filePath string, stat Status) error {
-	if !stat.Valid(ros.Cfg.Ver) {
+	if !stat.Valid() {
 		return errors.New("invalid member status")
 	}
 	ros.memlk.Lock()
 	ros.Mem[filePath] = stat
 	ros.memlk.Unlock()
 	return nil
+}
+
+func (ros *Roster) Expel(filePath string) {
+	ros.memlk.Lock()
+	defer ros.memlk.Unlock()
+	if _, ok := ros.Mem[filePath]; ok {
+		delete(ros.Mem, filePath)
+	}
 }
 
 func (ros *Roster) Present(filePath string) error {

@@ -33,17 +33,21 @@ type Taker struct {
 }
 
 var (
+	DefaultNewHandler = Handler(func(filePath string) { fmt.Println("+ " + filePath) })
+	DefaultModHandler = Handler(func(filePath string) { fmt.Println(filePath) })
+	DefaultDelHandler = Handler(func(filePath string) { fmt.Println("- " + filePath) })
+	SkipHandler       = Handler(nil)
+
 	DefaultTaker = Taker{
-		NewFile: func(filePath string) { fmt.Println("+ " + filePath) },
-		ModFile: func(filePath string) { fmt.Println(filePath) },
-		DelFile: func(filePath string) { fmt.Println("- " + filePath) },
+		NewFile: DefaultNewHandler,
+		ModFile: DefaultModHandler,
+		DelFile: DefaultDelHandler,
 	}
 	SkipTaker = Taker{
-		NewFile: Skip,
-		ModFile: Skip,
-		DelFile: Skip,
+		NewFile: SkipHandler,
+		ModFile: SkipHandler,
+		DelFile: SkipHandler,
 	}
-	Skip = Handler(nil)
 )
 
 func Take(take Taker, filename string, update bool, path ...string) error {

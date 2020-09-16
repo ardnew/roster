@@ -16,9 +16,6 @@ import (
 
 // Info stores a unique description of a complete file path (relative) along
 // with its os.FileInfo obtained from filepath.Walk.
-
-// Info stores a unique description of a complete file path (relative) along
-// with its os.FileInfo obtained from filepath.Walk.
 type Info struct {
 	path string
 	info os.FileInfo
@@ -31,6 +28,7 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string, del
 
 	new = []string{}
 	mod = []string{}
+	del = []string{}
 
 	// funnel the worker goroutines' output into shared slices of strings
 	funnelNew := make(chan string)
@@ -71,21 +69,23 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string, del
 				if new, mod, stat, err := r.Changed(d, in.path, in.info); nil != err {
 					fmt.Printf("error: Changed(): %s: %s\n", err.Error(), in.path)
 				} else {
-					// update the index if new or changed
+					// update the roster index (in-memory) with current file attributes
+					var err error
 					if !new {
-						if err := r.Present(in.path); nil != err {
+						if err = r.Present(in.path); nil != err {
 							fmt.Printf("error: Present(): %s\n", err.Error())
 						}
 					}
-					if new || mod {
-						if err := r.Update(in.path, stat); nil != err {
+					if nil == err {
+						if err = r.Update(in.path, stat); nil != err {
 							fmt.Printf("error: Update(): %s: %s\n", err.Error(), in.path)
-						} else {
-							if new {
-								n <- in.path
-							} else {
-								m <- in.path
-							}
+						}
+					}
+					if nil == err {
+						if new {
+							n <- in.path
+						} else if mod {
+							m <- in.path
 						}
 					}
 				}
@@ -121,5 +121,11 @@ func Walk(filePath string, roster *file.Roster) (new []string, mod []string, del
 	waitNew.Wait()
 	waitMod.Wait()
 
-	return new, mod, roster.Absentees()
+	// finally, remove all missing files from the roster
+	del = roster.Absentees()
+	for _, s := range del {
+		roster.Expel(s)
+	}
+
+	return new, mod, del
 }

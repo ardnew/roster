@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/ardnew/roster"
 	"github.com/ardnew/version"
@@ -26,6 +27,13 @@ const (
 	updateRosterDefault   = false
 )
 
+const (
+	exitCodeErr = 125
+	exitCodeNew = 1 << 0
+	exitCodeMod = 1 << 1
+	exitCodeDel = 1 << 2
+)
+
 func main() {
 
 	var (
@@ -37,7 +45,25 @@ func main() {
 	flag.BoolVar(&updateRoster, "u", updateRosterDefault, "update roster with scan results")
 	flag.Parse()
 
-	if err := roster.Take(roster.DefaultTaker, rosterFileName, updateRoster, flag.Args()...); nil != err {
+	var new, mod, del uint
+	if err := roster.Take(roster.Taker{
+		NewFile: func(filePath string) { new++; roster.DefaultNewHandler(filePath) },
+		ModFile: func(filePath string) { mod++; roster.DefaultModHandler(filePath) },
+		DelFile: func(filePath string) { del++; roster.DefaultDelHandler(filePath) },
+	}, rosterFileName, updateRoster, flag.Args()...); nil != err {
 		fmt.Printf("error: %s\n", err)
+		os.Exit(exitCodeErr)
 	}
+
+	exitCode := 0
+	if new > 0 {
+		exitCode |= exitCodeNew
+	}
+	if mod > 0 {
+		exitCode |= exitCodeMod
+	}
+	if del > 0 {
+		exitCode |= exitCodeDel
+	}
+	os.Exit(exitCode)
 }
