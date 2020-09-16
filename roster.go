@@ -1,7 +1,7 @@
-package main
+package roster
 
 import (
-	"flag"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -24,51 +24,55 @@ func init() {
 	}
 }
 
-const (
-	rosterFileNameDefault = ".roster.yml"
-	updateRosterDefault   = false
+type Handler func(string)
+
+type Taker struct {
+	NewFile Handler
+	ModFile Handler
+}
+
+var (
+	DefaultTaker = Taker{
+		NewFile: func(filePath string) { fmt.Println("+ " + filePath) },
+		ModFile: func(filePath string) { fmt.Println(filePath) },
+	}
+	Skip = Handler(nil)
 )
 
-func main() {
+func Take(take Taker, filePath string, update bool, path ...string) error {
 
-	var (
-		rosterFileName string
-		updateRoster   bool
-	)
-
-	flag.StringVar(&rosterFileName, "f", rosterFileNameDefault, "roster file name")
-	flag.BoolVar(&updateRoster, "u", updateRosterDefault, "update roster with scan results")
-	flag.Parse()
-
-	if len(flag.Args()) == 0 {
-		fmt.Printf("error: no directory path(s) provided\n")
+	if len(path) == 0 {
+		return errors.New("no directory path(s) provided")
 	}
 
-	for _, dir := range flag.Args() {
-		path := filepath.Join(dir, rosterFileName)
+	for _, dir := range path {
+		path := filepath.Join(dir, filePath)
 		ros, err := file.Parse(path)
 		if nil != err {
-			fmt.Printf("error: file.Parse(): %s (skipping)\n", err.Error())
-			continue
+			return fmt.Errorf("file.Parse(): %s\n", err.Error())
 		}
 
 		new, mod := walk.Walk(dir, ros)
 
 		sort.Strings(new)
-		for _, s := range new {
-			fmt.Printf("+ %s\n", s)
+		if take.NewFile != nil {
+			for _, s := range new {
+				take.NewFile(s)
+			}
 		}
 
 		sort.Strings(mod)
-		for _, s := range mod {
-			fmt.Printf("%s\n", s)
+		if take.ModFile != nil {
+			for _, s := range mod {
+				take.ModFile(s)
+			}
 		}
 
-		if updateRoster {
+		if update {
 			if err := ros.Write(); nil != err {
-				fmt.Printf("marshal error: %s\n", err)
+				return fmt.Errorf("ros.Write(): %s\n", err)
 			}
 		}
 	}
-
+	return nil
 }

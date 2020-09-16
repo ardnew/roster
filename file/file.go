@@ -241,8 +241,8 @@ func New(fileExists bool, filePath string) *Roster {
 			},
 			Ver: Verify{
 				Fsize: true,
-				Perms: true,
-				Mtime: true,
+				Perms: false,
+				Mtime: false,
 				Check: true,
 			},
 			Ign: *ign,
